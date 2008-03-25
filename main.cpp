@@ -1,155 +1,174 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <stack>
 
 using namespace std;
 
-vector<int> *incidence_table; // incidencni tabulka - rika s jakymi hranami uzly inciduji
-vector<int*> result;		  // vysledek - bitova pole uzlu
-int nodes_total_count;		  // celkovy pocet uzlu
-int nodes_min_count;          // minimalni pocet uzlu uzloveho pokryti
-
-void RecursiveCount(int i, int x, int *bit_array, vector<int> edges_state_table)
+struct s_stack_item
 {
-	if (i < nodes_total_count)
-	{
-		if (x == 0)
-		{
-			// zjisteni, zda-li muze byt uzel odebran
-			bool ok = true;
-			for (int j = 0; j < (int)incidence_table[i].size(); j++)
-			{
-				if (edges_state_table[incidence_table[i][j]] == 1) ok = false;
-			}
+	int i;                         // cislo uzlu, pozice v bitovem poli
+	int x;                         // 0 - odebirame uzel, 1 - ponechavame uzel  
+	int nodes;                     // pocet uzlu
+	int *bit_array;                // bitove pole: 0 - uzel je vyrazen, 1 - uzel je obsazen
+	vector<int> edges_state_table; // rika s kolika uzly dana hrana inciduje
+} stack_item;
 
-			if (ok)
-			{
-				// zkopirovani bitoveho pole uzlu
-				int *temp_bit_array = new int[nodes_total_count];
-				for (int j = 0; j < nodes_total_count; j++) 
-				{
-					temp_bit_array[j] = bit_array[j];
-				}
+struct s_result
+{
+	int min_nodes;           // minimalni pocet uzlu   
+	vector<int*> bit_arrays; // vysledna bitova pole uzlu
+} result;
 
-				// vyrazeni uzlu
-				temp_bit_array[i] = 0;
-
-				// u kazde hrany, ktera incidovala s odebranym uzlem, je snizen pocet inciduicich uzlu o 1
-				for (int j = 0; j < (int)incidence_table[i].size(); j++)
-				{
-					edges_state_table[incidence_table[i][j]]--;
-				}
-
-				int nmc = 0;
-				for (int j = 0; j < nodes_total_count; j++) 
-				{
-					nmc += temp_bit_array[j];
-				}
-
-				if (nmc < nodes_min_count) 
-				{
-					nodes_min_count = nmc;
-					result.resize(0);
-					result.push_back(temp_bit_array);
-				}
-				else
-				{
-					if (nmc == nodes_min_count)
-					{
-						result.push_back(temp_bit_array);
-					}
-				}
-
-				i++;
-				RecursiveCount(i, 0, temp_bit_array, edges_state_table);
-				RecursiveCount(i, 1, temp_bit_array, edges_state_table);
-			}
-		}
-		else
-		{
-			i++;
-			RecursiveCount(i, 0, bit_array, edges_state_table);
-			RecursiveCount(i, 1, bit_array, edges_state_table);
-		}
-	}
-}
-
-int main(int argc, char *argv[])
+int main(int argc, char **argv)
 { 
-	/*
-	char infile[256];
-	cout << "Input file: ";
-    cin.getline(infile, 256);
-	ifstream fin(infile);
-	*/
-
-	ifstream fin("in.txt");
-
-	if (!fin) 
-	{
-		cerr << "Chyba. Nelze otevrit vstupni soubor." << endl;
+	if (argc != 2) 
+	{	
+		cerr << "usage: " << argv[0] << " input_file" << endl;
 		return 1;
 	}
 
-	int nx = 1, edge = 0;
-	char token; 
-	vector<int> edges_state_table;
+	ifstream fin(argv[1]);
 
-	fin >> nodes_total_count;
-
-	incidence_table = new vector<int>[nodes_total_count];
-
-	for (int i = 0; i < nodes_total_count; i++)
+	if (!fin) 
 	{
-		for (int j = 0; j < nx; j++)
+		cerr << "No such input file." << endl;
+		return 1;
+	}
+
+	vector<int> *incidence_table; // incidencni tabulka - rika s jakymi hranami uzly inciduji
+	int total_nodes;		      // celkovy pocet uzlu
+	stack<s_stack_item> stack;    // zasobnik 
+
+	// nacitani ze souboru //////////////////////////////////////////////////// 
+	int token, n = 1, edge = 0; 
+
+	fin >> total_nodes;
+
+	incidence_table = new vector<int>[total_nodes];
+
+	for (int i = 0; i < total_nodes; i++)
+	{
+		for (int j = 0; j < n; j++)
 		{
 			fin >> token;
 
-			if (token == '1') 
+			if (token == 1) 
 			{
-				if (j == nx) // jedna se o smycku
+				if (j == n) // jedna se o smycku
 				{
 					incidence_table[j].push_back(edge);
-					edges_state_table.push_back(1);
+					stack_item.edges_state_table.push_back(1);
 				}
 				else
 				{
 					incidence_table[i].push_back(edge);
 					incidence_table[j].push_back(edge);
-					edges_state_table.push_back(2);
+					stack_item.edges_state_table.push_back(2);
 				}
 
 				edge++;
 			}
 		}
 
-		for (int j = nx; j < nodes_total_count; j++) 
+		for (int j = n; j < total_nodes; j++) 
 		{
 			fin >> token;
 		}
 		
-		nx++;
+		n++;
 	}
 
 	fin.close();
+	///////////////////////////////////////////////////////////////////////////
 
-	// bitove pole uzlu
-	int *bit_array = new int[nodes_total_count]; 
-    // nastaveni bitoveho pole na same 1
-	for (int i = 0; i < nodes_total_count; i++) 
+	stack_item.bit_array = new int[total_nodes]; 
+	for (int i = 0; i < total_nodes; i++) 
 	{
-		bit_array[i] = 1;
+		stack_item.bit_array[i] = 1;
 	}
+
+	stack_item.i = -1;
+	stack_item.x = 1;
+	stack_item.nodes = total_nodes;
 	
-	nodes_min_count = nodes_total_count;
+	stack.push(stack_item);
 
-	RecursiveCount(0, 0, bit_array, edges_state_table);
-	RecursiveCount(0, 1, bit_array, edges_state_table);
+	result.min_nodes = total_nodes;
 
-	// vypisy na obrazovku ///////////////////////////////////////
+	while (!stack.empty())
+	{
+		stack_item = stack.top();
+		stack.pop();
 
+		if (stack_item.x == 0)
+		{
+			// zjisteni, zda-li muze byt uzel odebran
+			bool ok = true;
+			for (int j = 0; j < (int)incidence_table[stack_item.i].size(); j++)
+			{
+				if (stack_item.edges_state_table[incidence_table[stack_item.i][j]] == 1) ok = false;
+			}
+
+			if (ok)
+			{
+				// zkopirovani bitoveho pole uzlu
+				int *temp_bit_array = new int[total_nodes];
+				for (int j = 0; j < total_nodes; j++) 
+				{
+					temp_bit_array[j] = stack_item.bit_array[j];
+				}
+
+				// vyrazeni uzlu
+				temp_bit_array[stack_item.i] = 0;
+
+				// u kazde hrany, ktera incidovala s odebranym uzlem, je snizen pocet inciduicich uzlu o 1
+				for (int j = 0; j < (int)incidence_table[stack_item.i].size(); j++)
+				{
+					stack_item.edges_state_table[incidence_table[stack_item.i][j]]--;
+				}
+
+				stack_item.nodes--;
+
+				if (stack_item.nodes < result.min_nodes) 
+				{
+					result.min_nodes = stack_item.nodes;
+					result.bit_arrays.resize(0);
+					result.bit_arrays.push_back(temp_bit_array);
+				}
+				else
+				{
+					if (stack_item.nodes == result.min_nodes)
+					{
+						result.bit_arrays.push_back(temp_bit_array);
+					}
+				}
+
+				stack_item.i++;
+				if (stack_item.i < total_nodes)
+				{
+					stack_item.bit_array = temp_bit_array;
+					stack.push(stack_item);
+					stack_item.x = 1;
+					stack.push(stack_item);
+				}
+			}
+		}
+		else
+		{
+			stack_item.i++;
+			if (stack_item.i < total_nodes)
+			{
+				stack.push(stack_item);
+				stack_item.x = 0;
+				stack.push(stack_item);
+			}
+		}
+	}
+
+	// vypisy na obrazovku ////////////////////////////////////////////////////
 	cout << "incidencni tabulka:" << endl;
-	for (int i = 0; i < nodes_total_count; i++)
+	for (int i = 0; i < total_nodes; i++)
 	{
 		cout << i << " --> ";
 		for (int j = 0; j < (int)incidence_table[i].size(); j++)
@@ -160,17 +179,20 @@ int main(int argc, char *argv[])
 	}
 
 	cout << endl << "reseni: " << endl;
-	for (int i = 0; i < (int)result.size(); i++)
+	for (int i = 0; i < (int)result.bit_arrays.size(); i++)
 	{
 		cout << i+1 << ": ";
-		for (int j = 0; j < nodes_total_count; j++)
+		for (int j = 0; j < total_nodes; j++)
 		{
-			cout << result[i][j] << " ";
+			cout << result.bit_arrays[i][j] << " ";
 		}
 		cout << endl;
 	}
 
-	cout << endl; system("PAUSE");
+	cout << endl; 
+	///////////////////////////////////////////////////////////////////////////
 
+	system("PAUSE");
+	
 	return 0;
 }
