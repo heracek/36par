@@ -156,12 +156,15 @@ int main(int argc, char **argv)
 		}
 		else
 		{
-			stack_item.i++;
-			if (stack_item.i < total_nodes)
+			if ((stack_item.nodes - (total_nodes - (stack_item.i + 1))) <= result.min_nodes) // orez
 			{
-				stack.push(stack_item);
-				stack_item.x = 0;
-				stack.push(stack_item);
+				stack_item.i++;
+				if (stack_item.i < total_nodes)
+				{
+					stack.push(stack_item);
+					stack_item.x = 0;
+					stack.push(stack_item);
+				}
 			}
 		}
 	}
@@ -191,8 +194,6 @@ int main(int argc, char **argv)
 
 	cout << endl; 
 	///////////////////////////////////////////////////////////////////////////
-
-	system("PAUSE");
 	
 	return 0;
 }
