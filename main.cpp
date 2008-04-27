@@ -1,4 +1,4 @@
-#define LENGTH 1000
+#define LENGTH 10000
 
 #include "mpi.h"
 #include <iostream>
@@ -27,7 +27,7 @@ struct s_result
 vector<int> *incidence_table;      // incidencni tabulka - rika s jakymi hranami uzly inciduji
 int nodes_total_count;             // celkovy pocet uzlu
 int edges_total_count;             // celkovy pocet hran
-stack<s_stack_item> s;             // zasobnik 
+stack<s_stack_item> s;             // hlavni zasobnik 
 vector<s_stack_item> v1, v2;       // vektory pro rozdeleni prace
 
 int my_rank, p;
@@ -112,8 +112,6 @@ void sendIncidenceTable()
 		incidence_table_message[k++] = -1;
 	}
 
-	//MPI_Send(incidence_table_message, size, MPI_INT, 1, 0, MPI_COMM_WORLD);
-
 	MPI_Request *request = new MPI_Request;
 
 	for (int i = 1; i < p; i++)
@@ -134,7 +132,7 @@ void sendIncidenceTable()
 	}
 	*/
 
-	cout << "* proces " << my_rank << " rozeslal incidencni tabulku " << p-1 << " procesum" << endl;
+	cout << "* procesor " << my_rank << " rozeslal incidencni tabulku" << endl;
 }
 
 void receiveIncidenceTable()
@@ -168,7 +166,7 @@ void receiveIncidenceTable()
 	}
 	*/
 
-	cout << "* proces " << my_rank << " prijal incidencni tabulku" << endl;
+	cout << "* procesor " << my_rank << " prijal incidencni tabulku" << endl;
 }
 
 void sendWork(vector<s_stack_item> v)
@@ -196,8 +194,6 @@ void sendWork(vector<s_stack_item> v)
 		MPI_Request *request = new MPI_Request;
 		MPI_Isend(stack_item_message, size, MPI_INT, i+1, 1, MPI_COMM_WORLD, request);
 
-		////////////////////////////////////////////////////////////////////////////////////
-
 		/*
 		cout << "* prace pro proces " << i+1 << ": " << endl;
 		cout << "i: " << v[i].i << "  x: " << v[i].x << "  pocet uzlu: " << v[i].nodes_count << endl;
@@ -215,7 +211,7 @@ void sendWork(vector<s_stack_item> v)
 		*/
 	}
 
-	cout << "* proces " << my_rank << " rozeslal praci " << p-1 << " procesum" << endl;
+	cout << "* procesor " << my_rank << " rozdelil a rozeslal praci" << endl;
 
 	for (int i = p-1; i < (int)v.size(); i++)
 	{
@@ -245,8 +241,6 @@ void receiveWork()
 		stack_item.edges_state_table.push_back(message[5+nodes_total_count+j]); 
 	}
 
-	////////////////////////////////////////////////////////////////////////////////////
-
 	/*
 	cout << endl << "i: " << stack_item.i << "  x: " << stack_item.x << "  pocet uzlu: " << stack_item.nodes_count << endl;
 	cout << "bitove pole: ";
@@ -262,11 +256,9 @@ void receiveWork()
 	cout << endl;
 	*/
 			
-	cout << "* proces " << my_rank << " prijal praci" << endl;
+	cout << "* procesor " << my_rank << " prijal praci" << endl;
 
-	////////////////////////////////////////////////////////////////////////////////////
-
-	s.push(stack_item);
+	s.push(stack_item); // prace pro proces root
 }
 
 void countWork2();
@@ -280,10 +272,7 @@ void countWork1()
 	{
 		v1[i].i++;
 
-		//v1[i].x = 1;
 		v2.push_back(v1[i]);
-
-		//v1[i].x = 0;
 
 		// zjisteni, zda-li muze byt uzel odebran
 		bool ok = true;
@@ -344,10 +333,7 @@ void countWork2()
 	{
 		v2[i].i++;
 
-		//v2[i].x = 1;
 		v1.push_back(v2[i]);
-
-		//v2[i].x = 0;
 
 		// zjisteni, zda-li muze byt uzel odebran
 		bool ok = true;
@@ -401,22 +387,16 @@ void countWork2()
 
 void devideAndSendWork()
 {
+	stack_item.i = -1;
+	stack_item.x = 1;
+	stack_item.nodes_count = nodes_total_count;
 	stack_item.bit_array = new int[nodes_total_count]; 
 	for (int i = 0; i < nodes_total_count; i++) 
 	{
 		stack_item.bit_array[i] = 1;
 	}
-	stack_item.i = -1;
-	stack_item.x = 1;
-	stack_item.nodes_count = nodes_total_count;
 
 	result.nodes_min_count = nodes_total_count;	
-	
-	/////////////////////////////////////////////////////
-	/*
-	int depth = (int)ceil(log((float)p)/log(2.f));
-	cout << depth << endl;
-	*/
 
 	v1.push_back(stack_item);
 	countWork1();
@@ -436,15 +416,13 @@ void sendCurrentResult()
 		int m = 3;
 		for (int j = 0; j < (int)result.bit_arrays.size(); j++)
 			for (int k = 0; k < nodes_total_count; k++)
-			{
-				current_result_message[m++] = result.bit_arrays[j][k]; 
-			}
+		{
+			current_result_message[m++] = result.bit_arrays[j][k]; 
+		}
 		
 		MPI_Request *request = new MPI_Request;
 		MPI_Isend(current_result_message, size, MPI_INT, i+1, 2, MPI_COMM_WORLD, request);
 	}
-	
-	////////////////////////////////////////////////////////////////////////////////////
 
 	/*
 	cout << "* stavajici reseni:" << endl;
@@ -460,7 +438,7 @@ void sendCurrentResult()
 	}
 	*/
 
-	cout << "* proces " << my_rank << " rozeslal stavajici reseni " << p-1 << " procesum" << endl;
+	cout << "* procesor " << my_rank << " rozeslal stavajici reseni" << endl;
 }
 
 void receiveCurrentResult()
@@ -482,8 +460,6 @@ void receiveCurrentResult()
 		result.bit_arrays.push_back(result_array);
 	}
 
-	////////////////////////////////////////////////////////////////////////////////////
-
 	/*
 	cout << "* stavajici reseni:" << endl;
 	cout << "minimum uzlu: " << result.nodes_min_count << endl;
@@ -498,11 +474,178 @@ void receiveCurrentResult()
 	}
 	*/
 			
-	cout << "* proces " << my_rank << " prijal stavajici reseni" << endl;
+	cout << "* procesor " << my_rank << " prijal stavajici reseni" << endl;
+}
+
+void sendFinalResult()
+{
+	int size = 3 + (int)result.bit_arrays.size() * nodes_total_count;
+	
+	int *final_result_message = new int[size];
+
+	final_result_message[0] = result.nodes_min_count;
+	final_result_message[1] = (int)result.bit_arrays.size();
+	final_result_message[2] = nodes_total_count;
+	int k = 3;
+	for (int i = 0; i < (int)result.bit_arrays.size(); i++)
+		for (int j = 0; j < nodes_total_count; j++)
+	{
+		final_result_message[k++] = result.bit_arrays[i][j]; 
+	}
+		
+	MPI_Request *request = new MPI_Request;
+
+	MPI_Isend(final_result_message, size, MPI_INT, my_rank+1, 5, MPI_COMM_WORLD, request);
+
+	cout << "* procesor " << my_rank << " poslal finalni reseni procesoru " << my_rank+1 << endl;
+}
+
+void receiveFinalResult()
+{
+	int message[LENGTH];
+	MPI_Status status;
+
+	MPI_Recv(message, LENGTH, MPI_INT, p-1, 5, MPI_COMM_WORLD, &status);
+
+	s_result result_final;
+
+	result_final.nodes_min_count = message[0];
+	int k = 3;
+	for (int i = 0; i < message[1]; i++)
+	{
+		int *result_array = new int[message[2]];
+		for (int j = 0; j < message[2]; j++)
+		{
+			result_array[j] = message[k++]; 
+		}
+		result_final.bit_arrays.push_back(result_array);
+	}
+
+	cout << "* procesor " << my_rank << " prijal finalni reseni" << endl;
+
+	cout << "* reseni:" << endl;
+	cout << "pocet reseni: " << (int)result_final.bit_arrays.size() << endl;
+	cout << "minimum uzlu: " << result_final.nodes_min_count << endl;
+	for (int i = 0; i < (int)result_final.bit_arrays.size(); i++)
+	{
+		cout << i+1 << ": ";
+		for (int j = 0; j < nodes_total_count; j++)
+		{
+			cout << result_final.bit_arrays[i][j];
+		}
+		cout << endl;
+	}
+}
+
+void receiveAndResendFinalResult()
+{
+	int message[LENGTH];
+	MPI_Status status;
+
+	MPI_Recv(message, LENGTH, MPI_INT, MPI_ANY_SOURCE, 5, MPI_COMM_WORLD, &status);
+
+	s_result result_temp;
+
+	result_temp.nodes_min_count = message[0];
+	int k = 3;
+	for (int i = 0; i < message[1]; i++)
+	{
+		int *result_array = new int[message[2]];
+		for (int j = 0; j < message[2]; j++)
+		{
+			result_array[j] = message[k++]; 
+		}
+		result_temp.bit_arrays.push_back(result_array);
+	}
+
+	int *final_result_message, size;
+
+	if (result_temp.nodes_min_count < result.nodes_min_count)
+	{
+		size = 3 + (int)result_temp.bit_arrays.size() * nodes_total_count;
+		final_result_message = new int[size];
+
+		for (int i = 0; i < size; i++)
+		{
+			final_result_message[i] = message[i];
+		}
+	}
+	else
+	{
+		if (result_temp.nodes_min_count > result.nodes_min_count)
+		{
+			size = 3 + (int)result.bit_arrays.size() * nodes_total_count;
+		    final_result_message = new int[size];
+
+			final_result_message[0] = result.nodes_min_count;
+			final_result_message[1] = (int)result.bit_arrays.size();
+			final_result_message[2] = nodes_total_count;
+			int k = 3;
+			for (int i = 0; i < (int)result.bit_arrays.size(); i++)
+				for (int j = 0; j < nodes_total_count; j++)
+			{
+				final_result_message[k++] = result.bit_arrays[i][j]; 
+			}
+		}
+		else
+		{
+			for (int i = 0; i < (int)result.bit_arrays.size(); i++)
+			{
+				int *result_array = new int[nodes_total_count];
+				for (int j = 0; j < nodes_total_count; j++)
+				{
+					result_array[j] = result.bit_arrays[i][j];
+				}
+				result_temp.bit_arrays.push_back(result_array);
+			}
+
+			size = 3 + (int)result_temp.bit_arrays.size() * nodes_total_count;
+		    final_result_message = new int[size];
+
+			final_result_message[0] = result_temp.nodes_min_count;
+			final_result_message[1] = (int)result_temp.bit_arrays.size();
+			final_result_message[2] = nodes_total_count;
+			int m = 3;
+			for (int j = 0; j < (int)result_temp.bit_arrays.size(); j++)
+				for (int k = 0; k < nodes_total_count; k++)
+			{
+				final_result_message[m++] = result_temp.bit_arrays[j][k]; 
+			}
+		}	
+	}
+
+	MPI_Request *request = new MPI_Request;
+
+	if (my_rank+1 < p)
+	{
+		MPI_Isend(final_result_message, size, MPI_INT, my_rank+1, 5, MPI_COMM_WORLD, request);
+		cout << "* procesor " << my_rank << " prijal a preposlal finalni reseni procesoru " << my_rank+1 << endl;
+	}
+	else
+	{
+		MPI_Isend(final_result_message, size, MPI_INT, 0, 5, MPI_COMM_WORLD, request);
+		cout << "* procesor " << my_rank << " prijal a preposlal finalni reseni procesoru " << 0 << endl;
+	}
+
+	/*
+	cout << "* stavajici reseni:" << endl;
+	cout << "minimum uzlu: " << result.nodes_min_count << endl;
+	for (int i = 0; i < (int)result.bit_arrays.size(); i++)
+	{
+		cout << i+1 << ": ";
+		for (int j = 0; j < nodes_total_count; j++)
+		{
+			cout << result.bit_arrays[i][j] << " ";
+		}
+		cout << endl;
+	}
+	*/
 }
 
 void count()
 {
+	cout << "* procesor " << my_rank << " zahajil vypocet" << endl;
+
 	while (!s.empty())
 	{
 		stack_item = s.top();
@@ -576,7 +719,6 @@ void count()
 		}
 	}
 
-	// vypisy na obrazovku ////////////////////////////////////////////////////
 	/*
 	cout << "incidencni tabulka:" << endl;
 	for (int i = 0; i < nodes_total_count; i++)
@@ -590,10 +732,10 @@ void count()
 	}
 	*/
 
+	/*
 	cout << endl << "reseni(proces " << my_rank << "): " << endl;
 	cout << "minimum uzlu: " << result.nodes_min_count << endl;
 	cout << "pocet reseni: " << (int)result.bit_arrays.size() << endl;
-	/*
 	for (int i = 0; i < (int)result.bit_arrays.size(); i++)
 	{
 		cout << i+1 << ": ";
@@ -605,7 +747,6 @@ void count()
 	}
 	cout << endl;
 	*/
-	///////////////////////////////////////////////////////////////////////////
 }
 
 int main(int argc, char **argv)
@@ -629,6 +770,8 @@ int main(int argc, char **argv)
 		devideAndSendWork();
 		sendCurrentResult();
 		count();
+		sendFinalResult();
+		receiveFinalResult();
 	}
 	else
 	{
@@ -636,6 +779,7 @@ int main(int argc, char **argv)
 		receiveWork();
 		receiveCurrentResult();
 		count();
+		receiveAndResendFinalResult();
 	}
 
 	MPI_Finalize();
