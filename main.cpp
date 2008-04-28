@@ -169,7 +169,7 @@ void receiveIncidenceTable()
 	cout << "* procesor " << my_rank << " prijal incidencni tabulku" << endl;
 }
 
-void sendWork(vector<s_stack_item> v)
+void sendInitWork(vector<s_stack_item> v)
 {
 	int size = 5 + nodes_total_count + edges_total_count;
 	
@@ -261,145 +261,82 @@ void receiveWork()
 	s.push(stack_item); // prace pro proces root
 }
 
-void countWork2();
-
-void countWork1()
+void countWork(vector<s_stack_item> &va, vector<s_stack_item> &vb)
 {
-	v2.clear();
-	v2.resize(0);
+    vb.clear();
+    vb.resize(0);
 
-	for (int i = 0; i < (int)v1.size(); i++)
-	{
-		v1[i].i++;
+    for (int i = 0; i < (int)va.size(); i++)
+    {
+        va[i].i++;
 
-		v2.push_back(v1[i]);
+        vb.push_back(va[i]);
 
-		// zjisteni, zda-li muze byt uzel odebran
-		bool ok = true;
-		for (int j = 0; j < (int)incidence_table[v1[i].i].size(); j++)
-		{
-			if (v1[i].edges_state_table[incidence_table[v1[i].i][j]] == 1) ok = false;
-		}
+        // zjisteni, zda-li muze byt uzel odebran
+        bool ok = true;
+        for (int j = 0; j < (int)incidence_table[va[i].i].size(); j++)
+        {
+            if (va[i].edges_state_table[incidence_table[va[i].i][j]] == 1) ok = false;
+        }
 
-		if (ok)
-		{
-			// zkopirovani bitoveho pole uzlu
-			int *temp_bit_array = new int[nodes_total_count];
-			for (int j = 0; j < nodes_total_count; j++) 
-			{
-				temp_bit_array[j] = v1[i].bit_array[j];
-			}
+        if (ok)
+        {
+            // zkopirovani bitoveho pole uzlu
+            int *temp_bit_array = new int[nodes_total_count];
+            for (int j = 0; j < nodes_total_count; j++) 
+            {
+                temp_bit_array[j] = va[i].bit_array[j];
+            }
 
-			// vyrazeni uzlu
-			temp_bit_array[v1[i].i] = 0;
+            // vyrazeni uzlu
+            temp_bit_array[va[i].i] = 0;
 
-			// u kazde hrany, ktera incidovala s odebranym uzlem, je snizen pocet inciduicich uzlu o 1
-			for (int j = 0; j < (int)incidence_table[v1[i].i].size(); j++)
-			{
-				v1[i].edges_state_table[incidence_table[v1[i].i][j]]--;
-			}
+            // u kazde hrany, ktera incidovala s odebranym uzlem, je snizen pocet inciduicich uzlu o 1
+            for (int j = 0; j < (int)incidence_table[va[i].i].size(); j++)
+            {
+                va[i].edges_state_table[incidence_table[va[i].i][j]]--;
+            }
 
-			v1[i].nodes_count--;
+            va[i].nodes_count--;
 
-			if (v1[i].nodes_count < result.nodes_min_count) 
-			{
-				result.nodes_min_count = v1[i].nodes_count;
-				result.bit_arrays.resize(0);
-				result.bit_arrays.push_back(temp_bit_array);
-			}
-			else
-			{
-				if (v1[i].nodes_count == result.nodes_min_count)
-				{
-					result.bit_arrays.push_back(temp_bit_array);
-				}
-			}
+            if (va[i].nodes_count < result.nodes_min_count) 
+            {
+                result.nodes_min_count = va[i].nodes_count;
+                result.bit_arrays.resize(0);
+                result.bit_arrays.push_back(temp_bit_array);
+            }
+            else
+            {
+                if (va[i].nodes_count == result.nodes_min_count)
+                {
+                    result.bit_arrays.push_back(temp_bit_array);
+                }
+            }
 
-			v1[i].bit_array = temp_bit_array;
-			v2.push_back(v1[i]);
-		}
-	}
+            va[i].bit_array = temp_bit_array;
+            vb.push_back(va[i]);
+        }
+    }
 
-	if ((int)v2.size() >= p) sendWork(v2);
-	else countWork2();
-}
-
-void countWork2()
-{
-	v1.clear();
-	v1.resize(0);
-
-	for (int i = 0; i < (int)v2.size(); i++)
-	{
-		v2[i].i++;
-
-		v1.push_back(v2[i]);
-
-		// zjisteni, zda-li muze byt uzel odebran
-		bool ok = true;
-		for (int j = 0; j < (int)incidence_table[v2[i].i].size(); j++)
-		{
-			if (v2[i].edges_state_table[incidence_table[v2[i].i][j]] == 1) ok = false;
-		}
-
-		if (ok)
-		{
-			// zkopirovani bitoveho pole uzlu
-			int *temp_bit_array = new int[nodes_total_count];
-			for (int j = 0; j < nodes_total_count; j++) 
-			{
-				temp_bit_array[j] = v2[i].bit_array[j];
-			}
-
-			// vyrazeni uzlu
-			temp_bit_array[v2[i].i] = 0;
-
-			// u kazde hrany, ktera incidovala s odebranym uzlem, je snizen pocet inciduicich uzlu o 1
-			for (int j = 0; j < (int)incidence_table[v2[i].i].size(); j++)
-			{
-				v2[i].edges_state_table[incidence_table[v2[i].i][j]]--;
-			}
-
-			v2[i].nodes_count--;
-
-			if (v2[i].nodes_count < result.nodes_min_count) 
-			{
-				result.nodes_min_count = v2[i].nodes_count;
-				result.bit_arrays.resize(0);
-				result.bit_arrays.push_back(temp_bit_array);
-			}
-			else
-			{
-				if (v2[i].nodes_count == result.nodes_min_count)
-				{
-					result.bit_arrays.push_back(temp_bit_array);
-				}
-			}
-
-			v2[i].bit_array = temp_bit_array;
-			v1.push_back(v2[i]);
-		}
-	}
-
-	if ((int)v1.size() >= p) sendWork(v1);
-	else countWork1();
+    if ((int)vb.size() >= p) sendInitWork(vb);
+    else countWork(vb, va);
 }
 
 void devideAndSendWork()
 {
-	stack_item.i = -1;
-	stack_item.x = 1;
-	stack_item.nodes_count = nodes_total_count;
-	stack_item.bit_array = new int[nodes_total_count]; 
-	for (int i = 0; i < nodes_total_count; i++) 
-	{
-		stack_item.bit_array[i] = 1;
-	}
+    stack_item.i = -1;
+    stack_item.x = 1;
+    stack_item.nodes_count = nodes_total_count;
+    stack_item.bit_array = new int[nodes_total_count]; 
+    for (int i = 0; i < nodes_total_count; i++) 
+    {
+        stack_item.bit_array[i] = 1;
+    }
 
-	result.nodes_min_count = nodes_total_count;	
+    result.nodes_min_count = nodes_total_count;    
 
-	v1.push_back(stack_item);
-	countWork1();
+    v1.push_back(stack_item);
+    countWork(v1, v2);
 }
 
 void sendCurrentResult()
