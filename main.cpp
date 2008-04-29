@@ -1,10 +1,19 @@
 #define LENGTH 10000
+#define CHECK_MSG_AMOUNT 100
+
+#define MSG_INCIDANCE_TABLE 0
+#define MSG_INIT_WORK 1
+#define MSG_INIT_RESULT 2
+#define MSG_REQUEST 3
+#define MSG_WORK 4
+#define MSG_IDLE 5
+#define MSG_FINAL_RESULT 6
 
 #include "mpi.h"
 #include <iostream>
 #include <fstream>
 #include <vector>
-#include <stack>
+#include <list>
 #include <cmath>
 
 using namespace std;
@@ -27,10 +36,13 @@ struct s_result
 vector<int> *incidence_table;      // incidencni tabulka - rika s jakymi hranami uzly inciduji
 int nodes_total_count;             // celkovy pocet uzlu
 int edges_total_count;             // celkovy pocet hran
-stack<s_stack_item> s;             // hlavni zasobnik 
+list<s_stack_item> s;              // zasobnik 
 vector<s_stack_item> v1, v2;       // vektory pro rozdeleni prace
 
-int my_rank, p;
+int my_rank, p, flag, counter, idle;
+int message[LENGTH];
+MPI_Status status;
+MPI_Request *request;
 
 int loadData(char *file)
 {
@@ -112,35 +124,17 @@ void sendIncidenceTable()
 		incidence_table_message[k++] = -1;
 	}
 
-	MPI_Request *request = new MPI_Request;
-
 	for (int i = 1; i < p; i++)
 	{
-		MPI_Isend(incidence_table_message, size, MPI_INT, i, 0, MPI_COMM_WORLD, request);
+		MPI_Isend(incidence_table_message, size, MPI_INT, i, MSG_INCIDANCE_TABLE, MPI_COMM_WORLD, request);
 	}
-
-	/*
-	cout << "incidencni tabulka:" << endl;
-	for (int i = 0; i < nodes_total_count; i++)
-	{
-		cout << i << " --> ";
-		for (int j = 0; j < (int)incidence_table[i].size(); j++)
-		{
-			cout << incidence_table[i][j] << " ";
-		}
-		cout << endl;
-	}
-	*/
 
 	cout << "* procesor " << my_rank << " rozeslal incidencni tabulku" << endl;
 }
 
 void receiveIncidenceTable()
 {
-	int message[LENGTH];
-	MPI_Status status;
-
-	MPI_Recv(message, LENGTH, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+	MPI_Recv(message, LENGTH, MPI_INT, 0, MSG_INCIDANCE_TABLE, MPI_COMM_WORLD, &status);
 
 	incidence_table = new vector<int>[message[0]];
 
@@ -153,18 +147,6 @@ void receiveIncidenceTable()
 		}
 		else j++;
 	}
-
-	/*
-	for (int i = 0; i < message[0]; i++)
-	{
-		cout << i << " --> ";
-		for (int j = 0; j < (int)incidence_table[i].size(); j++)
-		{
-			cout << incidence_table[i][j] << " ";
-		}
-		cout << endl;
-	}
-	*/
 
 	cout << "* procesor " << my_rank << " prijal incidencni tabulku" << endl;
 }
@@ -191,40 +173,20 @@ void sendInitWork(vector<s_stack_item> v)
 			stack_item_message[5+nodes_total_count+j] = v[i].edges_state_table[j]; 
 		}
 
-		MPI_Request *request = new MPI_Request;
-		MPI_Isend(stack_item_message, size, MPI_INT, i+1, 1, MPI_COMM_WORLD, request);
-
-		/*
-		cout << "* prace pro proces " << i+1 << ": " << endl;
-		cout << "i: " << v[i].i << "  x: " << v[i].x << "  pocet uzlu: " << v[i].nodes_count << endl;
-		cout << "bitove pole: ";
-		for (int j = 0; j < nodes_total_count; j++)
-		{
-			cout << v[i].bit_array[j]; 
-		}
-		cout << endl << "stavova tabulka hran: ";
-		for (int j = 0; j < edges_total_count; j++)
-		{
-			cout << v[i].edges_state_table[j]; 
-		}
-		cout << endl << endl;
-		*/
+		MPI_Isend(stack_item_message, size, MPI_INT, i+1, MSG_INIT_WORK, MPI_COMM_WORLD, request);
 	}
-
-	cout << "* procesor " << my_rank << " rozdelil a rozeslal praci" << endl;
 
 	for (int i = p-1; i < (int)v.size(); i++)
 	{
-		s.push(v[i]);
+		s.push_front(v[i]); // zbyvajici prace pro procesor root
 	}
+
+	cout << "* procesor " << my_rank << " rozdelil a rozeslal praci" << endl;
 }
 
-void receiveWork()
+void receiveInitWork()
 {
-	int message[LENGTH];
-	MPI_Status status;
-
-	MPI_Recv(message, LENGTH, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);
+	MPI_Recv(message, LENGTH, MPI_INT, 0, MSG_INIT_WORK, MPI_COMM_WORLD, &status);
 
 	stack_item.i = message[0];
 	stack_item.x = message[1];
@@ -241,105 +203,73 @@ void receiveWork()
 		stack_item.edges_state_table.push_back(message[5+nodes_total_count+j]); 
 	}
 
-	/*
-	cout << endl << "i: " << stack_item.i << "  x: " << stack_item.x << "  pocet uzlu: " << stack_item.nodes_count << endl;
-	cout << "bitove pole: ";
-	for (int j = 0; j < nodes_total_count; j++)
-	{
-		cout << stack_item.bit_array[j]; 
-	}
-	cout << endl << "stavova tabulka hran: ";
-	for (int j = 0; j < edges_total_count; j++)
-	{
-		cout << stack_item.edges_state_table[j]; 
-	}
-	cout << endl;
-	*/
-			
-	cout << "* procesor " << my_rank << " prijal praci" << endl;
+	s.push_front(stack_item);
 
-	s.push(stack_item); // prace pro proces root
+	cout << "* procesor " << my_rank << " prijal praci" << endl;
 }
 
 void countWork(vector<s_stack_item> &va, vector<s_stack_item> &vb)
 {
-    vb.clear();
-    vb.resize(0);
+	vb.clear();
+	vb.resize(0);
 
-    for (int i = 0; i < (int)va.size(); i++)
-    {
-        va[i].i++;
+	for (int i = 0; i < (int)va.size(); i++)
+	{
+		va[i].i++;
 
-        vb.push_back(va[i]);
+		vb.push_back(va[i]);
 
-        // zjisteni, zda-li muze byt uzel odebran
-        bool ok = true;
-        for (int j = 0; j < (int)incidence_table[va[i].i].size(); j++)
-        {
-            if (va[i].edges_state_table[incidence_table[va[i].i][j]] == 1) ok = false;
-        }
+		// zjisteni, zda-li muze byt uzel odebran
+		bool ok = true;
+		for (int j = 0; j < (int)incidence_table[va[i].i].size(); j++)
+		{
+			if (va[i].edges_state_table[incidence_table[va[i].i][j]] == 1) ok = false;
+		}
 
-        if (ok)
-        {
-            // zkopirovani bitoveho pole uzlu
-            int *temp_bit_array = new int[nodes_total_count];
-            for (int j = 0; j < nodes_total_count; j++) 
-            {
-                temp_bit_array[j] = va[i].bit_array[j];
-            }
+		if (ok)
+		{
+			// zkopirovani bitoveho pole uzlu
+			int *temp_bit_array = new int[nodes_total_count];
+			for (int j = 0; j < nodes_total_count; j++) 
+			{
+				temp_bit_array[j] = va[i].bit_array[j];
+			}
 
-            // vyrazeni uzlu
-            temp_bit_array[va[i].i] = 0;
+			// vyrazeni uzlu
+			temp_bit_array[va[i].i] = 0;
 
-            // u kazde hrany, ktera incidovala s odebranym uzlem, je snizen pocet inciduicich uzlu o 1
-            for (int j = 0; j < (int)incidence_table[va[i].i].size(); j++)
-            {
-                va[i].edges_state_table[incidence_table[va[i].i][j]]--;
-            }
+			// u kazde hrany, ktera incidovala s odebranym uzlem, je snizen pocet inciduicich uzlu o 1
+			for (int j = 0; j < (int)incidence_table[va[i].i].size(); j++)
+			{
+				va[i].edges_state_table[incidence_table[va[i].i][j]]--;
+			}
 
-            va[i].nodes_count--;
+			va[i].nodes_count--;
 
-            if (va[i].nodes_count < result.nodes_min_count) 
-            {
-                result.nodes_min_count = va[i].nodes_count;
-                result.bit_arrays.resize(0);
-                result.bit_arrays.push_back(temp_bit_array);
-            }
-            else
-            {
-                if (va[i].nodes_count == result.nodes_min_count)
-                {
-                    result.bit_arrays.push_back(temp_bit_array);
-                }
-            }
+			if (va[i].nodes_count < result.nodes_min_count) 
+			{
+				result.nodes_min_count = va[i].nodes_count;
+				result.bit_arrays.resize(0);
+				result.bit_arrays.push_back(temp_bit_array);
+			}
+			else
+			{
+				if (va[i].nodes_count == result.nodes_min_count)
+				{
+					result.bit_arrays.push_back(temp_bit_array);
+				}
+			}
 
-            va[i].bit_array = temp_bit_array;
-            vb.push_back(va[i]);
-        }
-    }
+			va[i].bit_array = temp_bit_array;
+			vb.push_back(va[i]);
+		}
+	}
 
-    if ((int)vb.size() >= p) sendInitWork(vb);
-    else countWork(vb, va);
+	if ((int)vb.size() >= p) sendInitWork(vb);
+	else countWork(vb, va);
 }
 
-void devideAndSendWork()
-{
-    stack_item.i = -1;
-    stack_item.x = 1;
-    stack_item.nodes_count = nodes_total_count;
-    stack_item.bit_array = new int[nodes_total_count]; 
-    for (int i = 0; i < nodes_total_count; i++) 
-    {
-        stack_item.bit_array[i] = 1;
-    }
-
-    result.nodes_min_count = nodes_total_count;    
-
-    v1.push_back(stack_item);
-    countWork(v1, v2);
-}
-
-void sendCurrentResult()
+void sendInitResult()
 {
 	int size = 3 + (int)result.bit_arrays.size() * nodes_total_count;
 	
@@ -357,33 +287,15 @@ void sendCurrentResult()
 			current_result_message[m++] = result.bit_arrays[j][k]; 
 		}
 		
-		MPI_Request *request = new MPI_Request;
-		MPI_Isend(current_result_message, size, MPI_INT, i+1, 2, MPI_COMM_WORLD, request);
+		MPI_Isend(current_result_message, size, MPI_INT, i+1, MSG_INIT_RESULT, MPI_COMM_WORLD, request);
 	}
-
-	/*
-	cout << "* stavajici reseni:" << endl;
-	cout << "minimum uzlu: " << result.nodes_min_count << endl;
-	for (int i = 0; i < (int)result.bit_arrays.size(); i++)
-	{
-		cout << i+1 << ": ";
-		for (int j = 0; j < nodes_total_count; j++)
-		{
-			cout << result.bit_arrays[i][j] << " ";
-		}
-		cout << endl;
-	}
-	*/
 
 	cout << "* procesor " << my_rank << " rozeslal stavajici reseni" << endl;
 }
 
-void receiveCurrentResult()
+void receiveInitResult()
 {
-	int message[LENGTH];
-	MPI_Status status;
-
-	MPI_Recv(message, LENGTH, MPI_INT, 0, 2, MPI_COMM_WORLD, &status);
+	MPI_Recv(message, LENGTH, MPI_INT, 0, MSG_INIT_RESULT, MPI_COMM_WORLD, &status);
 
 	result.nodes_min_count = message[0];
 	int m = 3;
@@ -396,20 +308,6 @@ void receiveCurrentResult()
 		}
 		result.bit_arrays.push_back(result_array);
 	}
-
-	/*
-	cout << "* stavajici reseni:" << endl;
-	cout << "minimum uzlu: " << result.nodes_min_count << endl;
-	for (int i = 0; i < (int)result.bit_arrays.size(); i++)
-	{
-		cout << i+1 << ": ";
-		for (int j = 0; j < nodes_total_count; j++)
-		{
-			cout << result.bit_arrays[i][j] << " ";
-		}
-		cout << endl;
-	}
-	*/
 			
 	cout << "* procesor " << my_rank << " prijal stavajici reseni" << endl;
 }
@@ -430,19 +328,14 @@ void sendFinalResult()
 		final_result_message[k++] = result.bit_arrays[i][j]; 
 	}
 		
-	MPI_Request *request = new MPI_Request;
-
-	MPI_Isend(final_result_message, size, MPI_INT, my_rank+1, 5, MPI_COMM_WORLD, request);
+	MPI_Isend(final_result_message, size, MPI_INT, my_rank+1, MSG_FINAL_RESULT, MPI_COMM_WORLD, request);
 
 	cout << "* procesor " << my_rank << " poslal finalni reseni procesoru " << my_rank+1 << endl;
 }
 
 void receiveFinalResult()
 {
-	int message[LENGTH];
-	MPI_Status status;
-
-	MPI_Recv(message, LENGTH, MPI_INT, p-1, 5, MPI_COMM_WORLD, &status);
+	MPI_Recv(message, LENGTH, MPI_INT, p-1, MSG_FINAL_RESULT, MPI_COMM_WORLD, &status);
 
 	s_result result_final;
 
@@ -458,28 +351,14 @@ void receiveFinalResult()
 		result_final.bit_arrays.push_back(result_array);
 	}
 
-	cout << "* procesor " << my_rank << " prijal finalni reseni" << endl;
+	result = result_final;
 
-	cout << "* reseni:" << endl;
-	cout << "pocet reseni: " << (int)result_final.bit_arrays.size() << endl;
-	cout << "minimum uzlu: " << result_final.nodes_min_count << endl;
-	for (int i = 0; i < (int)result_final.bit_arrays.size(); i++)
-	{
-		cout << i+1 << ": ";
-		for (int j = 0; j < nodes_total_count; j++)
-		{
-			cout << result_final.bit_arrays[i][j];
-		}
-		cout << endl;
-	}
+	cout << "* procesor " << my_rank << " prijal finalni reseni" << endl;
 }
 
 void receiveAndResendFinalResult()
 {
-	int message[LENGTH];
-	MPI_Status status;
-
-	MPI_Recv(message, LENGTH, MPI_INT, MPI_ANY_SOURCE, 5, MPI_COMM_WORLD, &status);
+	MPI_Recv(message, LENGTH, MPI_INT, MPI_ANY_SOURCE, MSG_FINAL_RESULT, MPI_COMM_WORLD, &status);
 
 	s_result result_temp;
 
@@ -551,113 +430,312 @@ void receiveAndResendFinalResult()
 		}	
 	}
 
-	MPI_Request *request = new MPI_Request;
-
 	if (my_rank+1 < p)
 	{
-		MPI_Isend(final_result_message, size, MPI_INT, my_rank+1, 5, MPI_COMM_WORLD, request);
+		MPI_Isend(final_result_message, size, MPI_INT, my_rank+1, MSG_FINAL_RESULT, MPI_COMM_WORLD, request);
 		cout << "* procesor " << my_rank << " prijal a preposlal finalni reseni procesoru " << my_rank+1 << endl;
 	}
 	else
 	{
-		MPI_Isend(final_result_message, size, MPI_INT, 0, 5, MPI_COMM_WORLD, request);
+		MPI_Isend(final_result_message, size, MPI_INT, 0, MSG_FINAL_RESULT, MPI_COMM_WORLD, request);
 		cout << "* procesor " << my_rank << " prijal a preposlal finalni reseni procesoru " << 0 << endl;
 	}
+}
 
-	/*
-	cout << "* stavajici reseni:" << endl;
-	cout << "minimum uzlu: " << result.nodes_min_count << endl;
-	for (int i = 0; i < (int)result.bit_arrays.size(); i++)
+void sendWork(int rank, int status)
+{
+	int *stack_item_message, size;
+
+	if (status == 1)
 	{
-		cout << i+1 << ": ";
+		s_stack_item stack_item_back = s.back(); // veme se nejspodnejsi polozka zasobniku
+		s.pop_back();
+
+		size = 6 + nodes_total_count + edges_total_count;
+		stack_item_message = new int[size];
+
+		stack_item_message[0] = status;
+		stack_item_message[1] = stack_item_back.i;
+		stack_item_message[2] = stack_item_back.x;
+		stack_item_message[3] = stack_item_back.nodes_count;
+		stack_item_message[4] = nodes_total_count;
 		for (int j = 0; j < nodes_total_count; j++)
 		{
-			cout << result.bit_arrays[i][j] << " ";
+			stack_item_message[5+j] = stack_item_back.bit_array[j]; 
 		}
-		cout << endl;
+		stack_item_message[5+nodes_total_count] = edges_total_count;
+		for (int j = 0; j < edges_total_count; j++)
+		{
+			stack_item_message[6+nodes_total_count+j] = stack_item_back.edges_state_table[j]; 
+		}
+		
+		cout << "* procesor " << my_rank << " poslal praci procesoru " << rank << endl;
 	}
-	*/
+	else
+	{
+		size = 1;
+		stack_item_message = new int;
+		stack_item_message[0] = 0;
+
+		cout << "* procesor " << my_rank << " neposlal praci procesoru " << rank << endl;
+	}
+
+	MPI_Isend(stack_item_message, size, MPI_INT, rank, MSG_WORK, MPI_COMM_WORLD, request);
+}
+
+int receiveWork(int rank)
+{
+	MPI_Recv(message, LENGTH, MPI_INT, rank, MSG_WORK, MPI_COMM_WORLD, &status);
+
+	if (message[0])
+	{
+		stack_item.i = message[1];
+		stack_item.x = message[2];
+		stack_item.nodes_count = message[3];
+		nodes_total_count = message[4];
+		stack_item.bit_array = new int[nodes_total_count]; 
+		for (int j = 0; j < nodes_total_count; j++)
+		{
+			stack_item.bit_array[j] = message[5+j]; 
+		}
+		edges_total_count = message[5+nodes_total_count];
+		stack_item.edges_state_table.clear();
+		stack_item.edges_state_table.resize(0);
+		for (int j = 0; j < edges_total_count; j++)
+		{
+			stack_item.edges_state_table.push_back(message[6+nodes_total_count+j]); 
+		}
+
+		cout << "* procesor " << my_rank << " prijal praci od procesoru " << rank << endl;
+
+		s.push_front(stack_item);
+
+		return 1;
+	}
+
+	return 0;
+}
+
+int requestWork()
+{
+	int rank = my_rank;  
+
+	while (1)
+	{
+		if (++rank == p) rank = 0;
+		if (rank == my_rank) return 0;
+
+		MPI_Isend(NULL, 0, MPI_INT, rank, MSG_REQUEST, MPI_COMM_WORLD, request);
+		cout << "* procesor " << my_rank << " poslal zadost o praci procesoru " << rank << endl;
+
+		counter = 0;
+
+		while (1)
+		{
+			if ((counter++ % CHECK_MSG_AMOUNT) == 0)
+			{
+				MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &flag, &status);
+
+				if (flag)
+				{
+					if (status.MPI_TAG == MSG_REQUEST)
+					{
+						MPI_Recv(message, LENGTH, MPI_INT, status.MPI_SOURCE, MSG_REQUEST, MPI_COMM_WORLD, &status);
+						cout << "* procesor " << my_rank << " prijal zadost o praci od procesoru " << status.MPI_SOURCE << endl;
+						sendWork(status.MPI_SOURCE, 0);
+					}
+
+					if (status.MPI_TAG == MSG_WORK)
+					{
+						if (receiveWork(status.MPI_SOURCE))
+						{
+							return 1;
+						}
+						else break;
+					}
+
+					if (status.MPI_TAG == MSG_IDLE)
+					{
+						MPI_Recv(message, LENGTH, MPI_INT, status.MPI_SOURCE, MSG_IDLE, MPI_COMM_WORLD, &status);
+						cout << "* procesor " << my_rank << " prijal ukoncovaci token od procesoru " << status.MPI_SOURCE << endl;
+						idle++;
+					}
+				}
+			}
+		}
+	}
+}
+
+void goToIdle()
+{
+	cout << "* procesor " << my_rank << " je idle" << endl;
+
+	if (my_rank != 0)
+	{
+		MPI_Isend(NULL, 0, MPI_INT, 0, MSG_IDLE, MPI_COMM_WORLD, request);
+		cout << "* procesor " << my_rank << " poslal ukoncovaci token procesoru 0" << endl;
+	}
+	else
+	{
+		if (idle == p-1)
+		{
+			sendFinalResult();
+			receiveFinalResult();
+			return;
+		}
+	}
+    
+	counter = 0;
+
+	while (1)
+	{
+		if ((counter++ % CHECK_MSG_AMOUNT) == 0)
+		{
+			MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &flag, &status);
+
+			if (flag)
+			{
+				if (status.MPI_TAG == MSG_REQUEST)
+				{
+					MPI_Recv(message, LENGTH, MPI_INT, status.MPI_SOURCE, MSG_REQUEST, MPI_COMM_WORLD, &status);
+					cout << "* procesor " << my_rank << " prijal zadost o praci od procesoru " << status.MPI_SOURCE << endl;
+					sendWork(status.MPI_SOURCE, 0);
+				}
+
+				if (status.MPI_TAG == MSG_IDLE)
+				{
+					MPI_Recv(message, LENGTH, MPI_INT, status.MPI_SOURCE, MSG_IDLE, MPI_COMM_WORLD, &status);
+					cout << "* procesor " << my_rank << " prijal ukoncovaci token od procesoru " << status.MPI_SOURCE << endl;
+					if (++idle == p-1)
+					{
+						sendFinalResult();
+						receiveFinalResult();
+						return;
+					}
+				}
+
+				if (status.MPI_TAG == MSG_FINAL_RESULT)
+				{
+					receiveAndResendFinalResult();
+					return;
+				}
+			}
+
+			counter = 0;
+		}
+	}
 }
 
 void count()
 {
 	cout << "* procesor " << my_rank << " zahajil vypocet" << endl;
 
-	while (!s.empty())
+	counter = 0;
+
+	while (1)
 	{
-		stack_item = s.top();
-		s.pop();
-
-		if (stack_item.x == 0)
+		while (!s.empty())
 		{
-			// zjisteni, zda-li muze byt uzel odebran
-			bool ok = true;
-			for (int j = 0; j < (int)incidence_table[stack_item.i].size(); j++)
+			if ((counter++ % CHECK_MSG_AMOUNT) == 0)
 			{
-				if (stack_item.edges_state_table[incidence_table[stack_item.i][j]] == 1) ok = false;
-			}
+				MPI_Iprobe(MPI_ANY_SOURCE, MSG_REQUEST, MPI_COMM_WORLD, &flag, &status);
 
-			if (ok)
-			{
-				// zkopirovani bitoveho pole uzlu
-				int *temp_bit_array = new int[nodes_total_count];
-				for (int j = 0; j < nodes_total_count; j++) 
+				if (flag)
 				{
-					temp_bit_array[j] = stack_item.bit_array[j];
+					MPI_Recv(message, LENGTH, MPI_INT, status.MPI_SOURCE, MSG_REQUEST, MPI_COMM_WORLD, &status);
+					cout << "* procesor " << my_rank << " prijal zadost o praci od procesoru " << status.MPI_SOURCE << endl;
+
+					if ((int)s.size() > 1) sendWork(status.MPI_SOURCE, 1);
+					else sendWork(status.MPI_SOURCE, 0);
 				}
 
-				// vyrazeni uzlu
-				temp_bit_array[stack_item.i] = 0;
+				counter = 0;
+			}
 
-				// u kazde hrany, ktera incidovala s odebranym uzlem, je snizen pocet inciduicich uzlu o 1
+			stack_item = s.front();
+			s.pop_front();
+
+			if (stack_item.x == 0)
+			{
+				// zjisteni, zda-li muze byt uzel odebran
+				bool ok = true;
 				for (int j = 0; j < (int)incidence_table[stack_item.i].size(); j++)
 				{
-					stack_item.edges_state_table[incidence_table[stack_item.i][j]]--;
+					if (stack_item.edges_state_table[incidence_table[stack_item.i][j]] == 1) ok = false;
 				}
 
-				stack_item.nodes_count--;
-
-				if (stack_item.nodes_count < result.nodes_min_count) 
+				if (ok)
 				{
-					result.nodes_min_count = stack_item.nodes_count;
-					result.bit_arrays.resize(0);
-					result.bit_arrays.push_back(temp_bit_array);
-				}
-				else
-				{
-					if (stack_item.nodes_count == result.nodes_min_count)
+					// zkopirovani bitoveho pole uzlu
+					int *temp_bit_array = new int[nodes_total_count];
+					for (int j = 0; j < nodes_total_count; j++) 
 					{
+						temp_bit_array[j] = stack_item.bit_array[j];
+					}
+
+					// vyrazeni uzlu
+					temp_bit_array[stack_item.i] = 0;
+
+					// u kazde hrany, ktera incidovala s odebranym uzlem, je snizen pocet inciduicich uzlu o 1
+					for (int j = 0; j < (int)incidence_table[stack_item.i].size(); j++)
+					{
+						stack_item.edges_state_table[incidence_table[stack_item.i][j]]--;
+					}
+
+					stack_item.nodes_count--;
+
+					if (stack_item.nodes_count < result.nodes_min_count) 
+					{
+						result.nodes_min_count = stack_item.nodes_count;
+						result.bit_arrays.resize(0);
 						result.bit_arrays.push_back(temp_bit_array);
 					}
-				}
+					else
+					{
+						if (stack_item.nodes_count == result.nodes_min_count)
+						{
+							result.bit_arrays.push_back(temp_bit_array);
+						}
+					}
 
-				stack_item.i++;
-				if (stack_item.i < nodes_total_count)
-				{
-					stack_item.bit_array = temp_bit_array;
-					s.push(stack_item);
-					stack_item.x = 1;
-					s.push(stack_item);
+					stack_item.i++;
+					if (stack_item.i < nodes_total_count)
+					{
+						stack_item.bit_array = temp_bit_array;
+						s.push_front(stack_item);
+						stack_item.x = 1;
+						s.push_front(stack_item);
+					}
 				}
 			}
-		}
-		else
-		{
-			if ((stack_item.nodes_count - (nodes_total_count - (stack_item.i + 1))) <= result.nodes_min_count) // orez
+			else
 			{
-				stack_item.i++;
-				if (stack_item.i < nodes_total_count)
+				if ((stack_item.nodes_count - (nodes_total_count - (stack_item.i + 1))) <= result.nodes_min_count) // orez
 				{
-					s.push(stack_item);
-					stack_item.x = 0;
-					s.push(stack_item);
+					stack_item.i++;
+					if (stack_item.i < nodes_total_count)
+					{
+						s.push_front(stack_item);
+						stack_item.x = 0;
+						s.push_front(stack_item);
+					}
 				}
 			}
 		}
+
+		cout << "* procesor " << my_rank << " nema praci" << endl;
+		
+		if (!requestWork() || (p == 1)) break;
 	}
 
-	/*
-	cout << "incidencni tabulka:" << endl;
+	if (p > 1) goToIdle();
+}
+
+void writeResult()
+{
+	cout << "* reseni:" << endl << endl;
+	cout << "incidencni tabulka (uzlu: " << nodes_total_count << ", hran: " 
+		 << edges_total_count << "):" << endl;
 	for (int i = 0; i < nodes_total_count; i++)
 	{
 		cout << i << " --> ";
@@ -667,23 +745,44 @@ void count()
 		}
 		cout << endl;
 	}
-	*/
-
-	/*
-	cout << endl << "reseni(proces " << my_rank << "): " << endl;
-	cout << "minimum uzlu: " << result.nodes_min_count << endl;
-	cout << "pocet reseni: " << (int)result.bit_arrays.size() << endl;
+	cout << endl << "minimum uzlu: " << result.nodes_min_count << ", pocet reseni: " 
+		 << (int)result.bit_arrays.size() << endl;
 	for (int i = 0; i < (int)result.bit_arrays.size(); i++)
 	{
 		cout << i+1 << ": ";
 		for (int j = 0; j < nodes_total_count; j++)
 		{
-			cout << result.bit_arrays[i][j] << " ";
+			cout << result.bit_arrays[i][j];
 		}
 		cout << endl;
 	}
-	cout << endl;
-	*/
+}
+
+void init()
+{
+	result.nodes_min_count = nodes_total_count;	
+	
+	stack_item.i = -1;
+	stack_item.x = 1;
+	stack_item.nodes_count = nodes_total_count;
+	stack_item.bit_array = new int[nodes_total_count]; 
+	for (int i = 0; i < nodes_total_count; i++) 
+	{
+		stack_item.bit_array[i] = 1;
+	}
+
+	if (p > 1)
+	{
+		idle = 0;
+		sendIncidenceTable();
+		v1.push_back(stack_item);
+		countWork(v1, v2); // rozdeleni prace
+		sendInitResult();
+	}
+	else 
+	{
+		s.push_back(stack_item);
+	}
 }
 
 int main(int argc, char **argv)
@@ -700,23 +799,21 @@ int main(int argc, char **argv)
 	MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
 	MPI_Comm_size(MPI_COMM_WORLD, &p);
 
+	request = new MPI_Request;
+	
 	if (my_rank == 0)
 	{
 		if (loadData("in.txt")) return 1;
-		sendIncidenceTable();
-		devideAndSendWork();
-		sendCurrentResult();
+		init();
 		count();
-		sendFinalResult();
-		receiveFinalResult();
+		writeResult();
 	}
 	else
 	{
 		receiveIncidenceTable();
-		receiveWork();
-		receiveCurrentResult();
+		receiveInitWork();
+		receiveInitResult();
 		count();
-		receiveAndResendFinalResult();
 	}
 
 	MPI_Finalize();
