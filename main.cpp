@@ -9,6 +9,8 @@
 #define MSG_IDLE 5
 #define MSG_FINAL_RESULT 6
 
+//#define LOG
+
 #include "mpi.h"
 #include <iostream>
 #include <fstream>
@@ -129,7 +131,9 @@ void sendIncidenceTable()
 		MPI_Isend(incidence_table_message, size, MPI_INT, i, MSG_INCIDANCE_TABLE, MPI_COMM_WORLD, request);
 	}
 
+    #ifdef LOG
 	cout << "* procesor " << my_rank << " rozeslal incidencni tabulku" << endl;
+    #endif
 }
 
 void receiveIncidenceTable()
@@ -148,7 +152,9 @@ void receiveIncidenceTable()
 		else j++;
 	}
 
+	#ifdef LOG
 	cout << "* procesor " << my_rank << " prijal incidencni tabulku" << endl;
+	#endif
 }
 
 void sendInitWork(vector<s_stack_item> v)
@@ -181,7 +187,9 @@ void sendInitWork(vector<s_stack_item> v)
 		s.push_front(v[i]); // zbyvajici prace pro procesor root
 	}
 
+	#ifdef LOG
 	cout << "* procesor " << my_rank << " rozdelil a rozeslal praci" << endl;
+	#endif
 }
 
 void receiveInitWork()
@@ -205,7 +213,9 @@ void receiveInitWork()
 
 	s.push_front(stack_item);
 
+	#ifdef LOG
 	cout << "* procesor " << my_rank << " prijal praci" << endl;
+	#endif
 }
 
 void countWork(vector<s_stack_item> &va, vector<s_stack_item> &vb)
@@ -290,7 +300,9 @@ void sendInitResult()
 		MPI_Isend(current_result_message, size, MPI_INT, i+1, MSG_INIT_RESULT, MPI_COMM_WORLD, request);
 	}
 
+	#ifdef LOG
 	cout << "* procesor " << my_rank << " rozeslal stavajici reseni" << endl;
+	#endif
 }
 
 void receiveInitResult()
@@ -308,8 +320,10 @@ void receiveInitResult()
 		}
 		result.bit_arrays.push_back(result_array);
 	}
-			
+		
+	#ifdef LOG
 	cout << "* procesor " << my_rank << " prijal stavajici reseni" << endl;
+	#endif
 }
 
 void sendFinalResult()
@@ -330,7 +344,9 @@ void sendFinalResult()
 		
 	MPI_Isend(final_result_message, size, MPI_INT, my_rank+1, MSG_FINAL_RESULT, MPI_COMM_WORLD, request);
 
+	#ifdef LOG
 	cout << "* procesor " << my_rank << " poslal finalni reseni procesoru " << my_rank+1 << endl;
+	#endif
 }
 
 void receiveFinalResult()
@@ -353,7 +369,9 @@ void receiveFinalResult()
 
 	result = result_final;
 
+	#ifdef LOG
 	cout << "* procesor " << my_rank << " prijal finalni reseni" << endl;
+	#endif
 }
 
 void receiveAndResendFinalResult()
@@ -433,12 +451,16 @@ void receiveAndResendFinalResult()
 	if (my_rank+1 < p)
 	{
 		MPI_Isend(final_result_message, size, MPI_INT, my_rank+1, MSG_FINAL_RESULT, MPI_COMM_WORLD, request);
+		#ifdef LOG
 		cout << "* procesor " << my_rank << " prijal a preposlal finalni reseni procesoru " << my_rank+1 << endl;
+		#endif
 	}
 	else
 	{
 		MPI_Isend(final_result_message, size, MPI_INT, 0, MSG_FINAL_RESULT, MPI_COMM_WORLD, request);
+		#ifdef LOG
 		cout << "* procesor " << my_rank << " prijal a preposlal finalni reseni procesoru " << 0 << endl;
+		#endif
 	}
 }
 
@@ -469,7 +491,9 @@ void sendWork(int rank, int status)
 			stack_item_message[6+nodes_total_count+j] = stack_item_back.edges_state_table[j]; 
 		}
 		
+		#ifdef LOG
 		cout << "* procesor " << my_rank << " poslal praci procesoru " << rank << endl;
+		#endif
 	}
 	else
 	{
@@ -477,7 +501,9 @@ void sendWork(int rank, int status)
 		stack_item_message = new int;
 		stack_item_message[0] = 0;
 
+		#ifdef LOG
 		cout << "* procesor " << my_rank << " neposlal praci procesoru " << rank << endl;
+		#endif
 	}
 
 	MPI_Isend(stack_item_message, size, MPI_INT, rank, MSG_WORK, MPI_COMM_WORLD, request);
@@ -506,9 +532,11 @@ int receiveWork(int rank)
 			stack_item.edges_state_table.push_back(message[6+nodes_total_count+j]); 
 		}
 
-		cout << "* procesor " << my_rank << " prijal praci od procesoru " << rank << endl;
-
 		s.push_front(stack_item);
+
+		#ifdef LOG
+		cout << "* procesor " << my_rank << " prijal praci od procesoru " << rank << endl;
+		#endif
 
 		return 1;
 	}
@@ -526,7 +554,9 @@ int requestWork()
 		if (rank == my_rank) return 0;
 
 		MPI_Isend(NULL, 0, MPI_INT, rank, MSG_REQUEST, MPI_COMM_WORLD, request);
+		#ifdef LOG
 		cout << "* procesor " << my_rank << " poslal zadost o praci procesoru " << rank << endl;
+		#endif
 
 		counter = 0;
 
@@ -541,7 +571,9 @@ int requestWork()
 					if (status.MPI_TAG == MSG_REQUEST)
 					{
 						MPI_Recv(message, LENGTH, MPI_INT, status.MPI_SOURCE, MSG_REQUEST, MPI_COMM_WORLD, &status);
+						#ifdef LOG
 						cout << "* procesor " << my_rank << " prijal zadost o praci od procesoru " << status.MPI_SOURCE << endl;
+						#endif
 						sendWork(status.MPI_SOURCE, 0);
 					}
 
@@ -557,7 +589,9 @@ int requestWork()
 					if (status.MPI_TAG == MSG_IDLE)
 					{
 						MPI_Recv(message, LENGTH, MPI_INT, status.MPI_SOURCE, MSG_IDLE, MPI_COMM_WORLD, &status);
+						#ifdef LOG
 						cout << "* procesor " << my_rank << " prijal ukoncovaci token od procesoru " << status.MPI_SOURCE << endl;
+						#endif
 						idle++;
 					}
 				}
@@ -568,12 +602,16 @@ int requestWork()
 
 void goToIdle()
 {
+	#ifdef LOG
 	cout << "* procesor " << my_rank << " je idle" << endl;
+	#endif
 
 	if (my_rank != 0)
 	{
 		MPI_Isend(NULL, 0, MPI_INT, 0, MSG_IDLE, MPI_COMM_WORLD, request);
+		#ifdef LOG
 		cout << "* procesor " << my_rank << " poslal ukoncovaci token procesoru 0" << endl;
+		#endif
 	}
 	else
 	{
@@ -598,14 +636,18 @@ void goToIdle()
 				if (status.MPI_TAG == MSG_REQUEST)
 				{
 					MPI_Recv(message, LENGTH, MPI_INT, status.MPI_SOURCE, MSG_REQUEST, MPI_COMM_WORLD, &status);
+					#ifdef LOG
 					cout << "* procesor " << my_rank << " prijal zadost o praci od procesoru " << status.MPI_SOURCE << endl;
+					#endif
 					sendWork(status.MPI_SOURCE, 0);
 				}
 
 				if (status.MPI_TAG == MSG_IDLE)
 				{
 					MPI_Recv(message, LENGTH, MPI_INT, status.MPI_SOURCE, MSG_IDLE, MPI_COMM_WORLD, &status);
+					#ifdef LOG
 					cout << "* procesor " << my_rank << " prijal ukoncovaci token od procesoru " << status.MPI_SOURCE << endl;
+					#endif
 					if (++idle == p-1)
 					{
 						sendFinalResult();
@@ -628,7 +670,9 @@ void goToIdle()
 
 void count()
 {
+	#ifdef LOG
 	cout << "* procesor " << my_rank << " zahajil vypocet" << endl;
+	#endif
 
 	counter = 0;
 
@@ -643,7 +687,9 @@ void count()
 				if (flag)
 				{
 					MPI_Recv(message, LENGTH, MPI_INT, status.MPI_SOURCE, MSG_REQUEST, MPI_COMM_WORLD, &status);
+					#ifdef LOG
 					cout << "* procesor " << my_rank << " prijal zadost o praci od procesoru " << status.MPI_SOURCE << endl;
+					#endif
 
 					if ((int)s.size() > 1) sendWork(status.MPI_SOURCE, 1);
 					else sendWork(status.MPI_SOURCE, 0);
@@ -723,7 +769,9 @@ void count()
 			}
 		}
 
+		#ifdef LOG
 		cout << "* procesor " << my_rank << " nema praci" << endl;
+		#endif
 		
 		if (!requestWork() || (p == 1)) break;
 	}
