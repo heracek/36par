@@ -559,11 +559,12 @@ void sendPesek() {
     int dest_rank = (my_rank + 1) % p;
     MPI_Isend(&pesek_color, 1, MPI_CHAR, dest_rank, MSG_PESEK, MPI_COMM_WORLD, request);
     
-    color = WHITE_COLOR;
-    
     #ifdef LOG
     cout << "* procesor " << my_rank << " poslal procesoru " << dest_rank << " peska " << pesek_color << endl;
 	#endif
+    
+    color = WHITE_COLOR;
+    pesek_color = NONE_COLOR;
 }
 
 void receivePesek() {
@@ -575,9 +576,22 @@ void receivePesek() {
     
     if (my_rank == 0) {
         if (pesek_color == WHITE_COLOR) {
+            //for (int process_rank = 1; process_rank < p; process_rank++) {
+                // MPI_Isend(NULL, 0, MPI_INT, process_rank, MSG_IDLE, MPI_COMM_WORLD, request);
+                // #ifdef LOG
+                // cout << "* procesor " << my_rank << " poslal ukoncovaci token procesoru " << process_rank << endl;
+                // #endif
+                sendFinalResult();
+                receiveFinalResult();
+                throw 2;
+    		//}
+    		#ifdef LOG
             cout << "<<<<< mel bych ukoncit";
+            #endif
         } else {
+            #ifdef LOG
             cout << "* procesor 0 posila nove kolo peska" << endl;
+            #endif
             pesek_color = WHITE_COLOR;
             sendPesek();
             return;
@@ -597,9 +611,6 @@ int requestWork()
         color = WHITE_COLOR;
         pesek_color = WHITE_COLOR;
         sendPesek();
-    } else if (pesek_color != NONE_COLOR) {
-        sendPesek();
-        color = WHITE_COLOR;
     }
     
     
@@ -617,6 +628,11 @@ int requestWork()
         try {
     		while (1)
     		{
+    		    if (pesek_color != NONE_COLOR) {
+                    sendPesek();
+                    color = WHITE_COLOR;
+                }
+                
     			MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &flag, &status);
     			if (flag) {
     			switch (status.MPI_TAG) {
@@ -636,26 +652,43 @@ int requestWork()
         				else throw 1;//skok do vnejsiho cyklu
                         break;
 
+/*
         		    case MSG_IDLE:
                         MPI_Recv(message, LENGTH, MPI_INT, status.MPI_SOURCE, MSG_IDLE, MPI_COMM_WORLD, &status);
-                        #ifdef LOG
-                        cout << "* procesor " << my_rank << " prijal ukoncovaci token od procesoru " << status.MPI_SOURCE << endl;
-                        #endif
-                        idle++;
+    					#ifdef LOG
+    					cout << "* procesor " << my_rank << " prijal ukoncovaci token od procesoru " << status.MPI_SOURCE << endl;
+    					#endif
+						sendFinalResult();
+						receiveFinalResult();
+                        throw 2;
                         return 0;
                         break;
-            
+*/                    
+                    case MSG_FINAL_RESULT:
+    					receiveAndResendFinalResult();
+                        throw 10;
+                        return 0;
+    					break;
+                    
         			case MSG_PESEK:
+        			    #ifdef LOG
+                        cout << "* procesor " << my_rank << " prijima peska v requestWork()" << endl;
+                        #endif
                         receivePesek();
                         break;
                     
                     default:
+                        #ifdef LOG
                         cout << " >>>>>>>>>> unknown message in requestWork() <<<<<<<<< " << status.MPI_TAG << endl;
+                        #endif
                         break;
                 }}
     		}
 		} catch (int i) {
 		    // skok do vnejsiho cyklu
+		    if (i != 1) {
+                throw i;
+		    }
 		}
 	}
 }
@@ -668,10 +701,10 @@ void goToIdle()
 
 	if (my_rank != 0)
 	{
-		MPI_Isend(NULL, 0, MPI_INT, 0, MSG_IDLE, MPI_COMM_WORLD, request);
-		#ifdef LOG
-		cout << "* procesor " << my_rank << " poslal ukoncovaci token procesoru 0" << endl;
-		#endif
+        // MPI_Isend(NULL, 0, MPI_INT, 0, MSG_IDLE, MPI_COMM_WORLD, request);
+        // #ifdef LOG
+        // cout << "* procesor " << my_rank << " poslal ukoncovaci token procesoru 0" << endl;
+        // #endif
 	}
 	else
 	{
@@ -723,6 +756,9 @@ void goToIdle()
     					receiveAndResendFinalResult();
     					return;
     				case MSG_PESEK:
+    				    #ifdef LOG
+                        cout << "* procesoru " << my_rank << " prijima peska v goToIdle()" << endl;
+                        #endif
                         receivePesek();
                         break;
                     default:
@@ -751,19 +787,22 @@ void probeAndHandleMessages() {
         		if ((int)s.size() > 1) sendWork(status.MPI_SOURCE, 1);
         		else sendWork(status.MPI_SOURCE, 0);
                 break;
-            case MSG_IDLE:
-                MPI_Recv(message, LENGTH, MPI_INT, status.MPI_SOURCE, MSG_IDLE, MPI_COMM_WORLD, &status);
-				#ifdef LOG
-				cout << "* procesor " << my_rank << " prijal ukoncovaci token od procesoru " << status.MPI_SOURCE << endl;
-				#endif
-				if (++idle == p-1)
-				{
-					sendFinalResult();
-					receiveFinalResult();
-					return;
-				}
-                break;
+            // case MSG_IDLE:
+            //     MPI_Recv(message, LENGTH, MPI_INT, status.MPI_SOURCE, MSG_IDLE, MPI_COMM_WORLD, &status);
+            //     #ifdef LOG
+            //     cout << "* procesor " << my_rank << " prijal ukoncovaci token od procesoru " << status.MPI_SOURCE << endl;
+            //     #endif
+            //     if (++idle == p-1)
+            //     {
+            //      sendFinalResult();
+            //      receiveFinalResult();
+            //      return;
+            //     }
+            //     break;
             case MSG_PESEK:
+                #ifdef LOG
+                cout << "* procesoru " << my_rank << " prijima peska v probeAndHandleMessages()" << endl;
+                #endif
                 receivePesek();
                 break;
             default:
@@ -781,96 +820,100 @@ void count()
 	#endif
 
 	counter = 0;
+    
+    try {
+    	while (1)
+    	{
+    		while (!s.empty())
+    		{
+    			if ((++counter % CHECK_MSG_AMOUNT) == 0)
+    			{
+                    probeAndHandleMessages();
+    				counter = 0;
+    			}
 
-	while (1)
-	{
-		while (!s.empty())
-		{
-			if ((++counter % CHECK_MSG_AMOUNT) == 0)
-			{
-                probeAndHandleMessages();
-				counter = 0;
-			}
+    			stack_item = s.front();
+    			s.pop_front();
 
-			stack_item = s.front();
-			s.pop_front();
+    			if (stack_item.x == 0)
+    			{
+    				// zjisteni, zda-li muze byt uzel odebran
+    				bool ok = true;
+    				for (int j = 0; j < (int)incidence_table[stack_item.i].size(); j++)
+    				{
+    					if (stack_item.edges_state_table[incidence_table[stack_item.i][j]] == 1) ok = false;
+    				}
 
-			if (stack_item.x == 0)
-			{
-				// zjisteni, zda-li muze byt uzel odebran
-				bool ok = true;
-				for (int j = 0; j < (int)incidence_table[stack_item.i].size(); j++)
-				{
-					if (stack_item.edges_state_table[incidence_table[stack_item.i][j]] == 1) ok = false;
-				}
+    				if (ok)
+    				{
+    					// zkopirovani bitoveho pole uzlu
+    					int *temp_bit_array = new int[nodes_total_count];
+    					for (int j = 0; j < nodes_total_count; j++) 
+    					{
+    						temp_bit_array[j] = stack_item.bit_array[j];
+    					}
 
-				if (ok)
-				{
-					// zkopirovani bitoveho pole uzlu
-					int *temp_bit_array = new int[nodes_total_count];
-					for (int j = 0; j < nodes_total_count; j++) 
-					{
-						temp_bit_array[j] = stack_item.bit_array[j];
-					}
+    					// vyrazeni uzlu
+    					temp_bit_array[stack_item.i] = 0;
 
-					// vyrazeni uzlu
-					temp_bit_array[stack_item.i] = 0;
+    					// u kazde hrany, ktera incidovala s odebranym uzlem, je snizen pocet inciduicich uzlu o 1
+    					for (int j = 0; j < (int)incidence_table[stack_item.i].size(); j++)
+    					{
+    						stack_item.edges_state_table[incidence_table[stack_item.i][j]]--;
+    					}
 
-					// u kazde hrany, ktera incidovala s odebranym uzlem, je snizen pocet inciduicich uzlu o 1
-					for (int j = 0; j < (int)incidence_table[stack_item.i].size(); j++)
-					{
-						stack_item.edges_state_table[incidence_table[stack_item.i][j]]--;
-					}
+    					stack_item.nodes_count--;
 
-					stack_item.nodes_count--;
+    					if (stack_item.nodes_count < result.nodes_min_count) 
+    					{
+    						result.nodes_min_count = stack_item.nodes_count;
+    						result.bit_arrays.resize(0);
+    						result.bit_arrays.push_back(temp_bit_array);
+    					}
+    					else
+    					{
+    						if (stack_item.nodes_count == result.nodes_min_count)
+    						{
+    							result.bit_arrays.push_back(temp_bit_array);
+    						}
+    					}
 
-					if (stack_item.nodes_count < result.nodes_min_count) 
-					{
-						result.nodes_min_count = stack_item.nodes_count;
-						result.bit_arrays.resize(0);
-						result.bit_arrays.push_back(temp_bit_array);
-					}
-					else
-					{
-						if (stack_item.nodes_count == result.nodes_min_count)
-						{
-							result.bit_arrays.push_back(temp_bit_array);
-						}
-					}
+    					stack_item.i++;
+    					if (stack_item.i < nodes_total_count)
+    					{
+    						stack_item.bit_array = temp_bit_array;
+    						s.push_front(stack_item);
+    						stack_item.x = 1;
+    						s.push_front(stack_item);
+    					}
+    				}
+    			}
+    			else
+    			{
+    				if ((stack_item.nodes_count - (nodes_total_count - (stack_item.i + 1))) <= result.nodes_min_count) // orez
+    				{
+    					stack_item.i++;
+    					if (stack_item.i < nodes_total_count)
+    					{
+    						s.push_front(stack_item);
+    						stack_item.x = 0;
+    						s.push_front(stack_item);
+    					}
+    				}
+    			}
+    		}
 
-					stack_item.i++;
-					if (stack_item.i < nodes_total_count)
-					{
-						stack_item.bit_array = temp_bit_array;
-						s.push_front(stack_item);
-						stack_item.x = 1;
-						s.push_front(stack_item);
-					}
-				}
-			}
-			else
-			{
-				if ((stack_item.nodes_count - (nodes_total_count - (stack_item.i + 1))) <= result.nodes_min_count) // orez
-				{
-					stack_item.i++;
-					if (stack_item.i < nodes_total_count)
-					{
-						s.push_front(stack_item);
-						stack_item.x = 0;
-						s.push_front(stack_item);
-					}
-				}
-			}
-		}
-
-		#ifdef LOG
-		cout << "* procesor " << my_rank << " nema praci" << endl;
-		#endif
+    		#ifdef LOG
+    		cout << "* procesor " << my_rank << " nema praci" << endl;
+    		#endif
 		
-		if (!requestWork() || (p == 1)) break;
-	}
-    cout << ">>>>>>>>>>>>> i'm idel " << my_rank << "<<<<<<<<<<<<<<<<<<" << endl;
-	if (p > 1) goToIdle();
+    		if (!requestWork() || (p == 1)) break;
+    	}
+        cout << ">>>>>>>>>>>>> i'm idel " << my_rank << "<<<<<<<<<<<<<<<<<<" << endl;
+    	if (p > 1) goToIdle();
+    } catch (int i) {
+        // proces obdrzel prikaz k ukonceni
+    }
 }
 
 void writeResult()
