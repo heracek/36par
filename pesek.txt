@@ -1,0 +1,8 @@
+Algoritmus pro distribuovane ukonceni paralelniho vypoctu (ADUV)
+Kazdy procesor muze byt obarven 2 barvami, B nebo W. Na pocatku maji procesory barvu W. Pro zjisteni, zda muze cely vypocet skoncit, cirkuluje mezi procesory pesek, ktery muze byt take dvou barev, B a W. Algoritmus ukonceni funguje takto:
+
+1. Jakmile se prvni procesor P1 stane idle, nastavi svou barvu na W a posle peska barvy W procesoru P2.
+2. Jestlize procesor Pi posle praci procesoru Pj, kde i>j, pak Pi nastavi svou barvu na B.
+3. Jestlize Pi obdrzi peska, pak ma-li Pi barvu B, nastavi barvu peska na B. Jakmile se Pi stane idle, posle peska po kruznici procesoru Pi+1 a nastavi svoji barvu na W.
+4. Pokud P1 obdrzi zpet peska barvy W, je mozne vypocet ukoncit. Pokud ma pesek barvu B, P1 zahaji nove kolo vyslanim barvy W procesoru P2.
+5. Ukonceni je detekovano, jakmile P1 obdrzi zpet peska v barve W.
