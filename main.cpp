@@ -557,6 +557,11 @@ int receiveWork(int rank)
 
 void sendPesek() {
     int dest_rank = (my_rank + 1) % p;
+    
+    if (color == BLACK_COLOR) {
+        pesek_color = BLACK_COLOR;
+    }
+    
     MPI_Isend(&pesek_color, 1, MPI_CHAR, dest_rank, MSG_PESEK, MPI_COMM_WORLD, request);
     
     #ifdef LOG
@@ -576,22 +581,18 @@ void receivePesek() {
     
     if (my_rank == 0) {
         if (pesek_color == WHITE_COLOR) {
-            //for (int process_rank = 1; process_rank < p; process_rank++) {
-                // MPI_Isend(NULL, 0, MPI_INT, process_rank, MSG_IDLE, MPI_COMM_WORLD, request);
-                // #ifdef LOG
-                // cout << "* procesor " << my_rank << " poslal ukoncovaci token procesoru " << process_rank << endl;
-                // #endif
-                sendFinalResult();
-                receiveFinalResult();
-                throw 2;
-    		//}
-    		#ifdef LOG
-            cout << "<<<<< mel bych ukoncit";
+            #ifdef LOG
+            cout << "<<<<< ukoncuji" << endl;
             #endif
+            
+            sendFinalResult();
+            receiveFinalResult();
+            throw 2;
         } else {
             #ifdef LOG
             cout << "* procesor 0 posila nove kolo peska" << endl;
             #endif
+            
             pesek_color = WHITE_COLOR;
             sendPesek();
             return;
@@ -633,8 +634,24 @@ int requestWork()
                     color = WHITE_COLOR;
                 }
                 
-    			MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &flag, &status);
-    			if (flag) {
+                while (1) {
+                    MPI_Iprobe(MPI_ANY_SOURCE, MSG_WORK, MPI_COMM_WORLD, &flag, &status);
+                    
+                    if (flag) {
+                        if (receiveWork(status.MPI_SOURCE)) {
+        					return 1;
+        				} else {
+        				    throw 1;//skok do vnejsiho cyklu
+        				}
+
+                    } else {
+                        break;
+                    }
+                }
+    			
+    			MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+    			
+                // if (flag) {
     			switch (status.MPI_TAG) {
         			case MSG_REQUEST:
         				MPI_Recv(message, LENGTH, MPI_INT, status.MPI_SOURCE, MSG_REQUEST, MPI_COMM_WORLD, &status);
@@ -682,7 +699,8 @@ int requestWork()
                         cout << " >>>>>>>>>> unknown message in requestWork() <<<<<<<<< " << status.MPI_TAG << endl;
                         #endif
                         break;
-                }}
+                }
+                // }
     		}
 		} catch (int i) {
 		    // skok do vnejsiho cyklu
@@ -738,7 +756,7 @@ void goToIdle()
     					#endif
     					sendWork(status.MPI_SOURCE, 0);
                         break;
-
+/*
 				    case MSG_IDLE:
     					MPI_Recv(message, LENGTH, MPI_INT, status.MPI_SOURCE, MSG_IDLE, MPI_COMM_WORLD, &status);
     					#ifdef LOG
@@ -751,7 +769,7 @@ void goToIdle()
     						return;
     					}
                         break;
-                        
+*/                        
 				    case MSG_FINAL_RESULT:
     					receiveAndResendFinalResult();
     					return;
@@ -801,12 +819,13 @@ void probeAndHandleMessages() {
             //     break;
             case MSG_PESEK:
                 #ifdef LOG
-                cout << "* procesoru " << my_rank << " prijima peska v probeAndHandleMessages()" << endl;
+                cout << "* procesor " << my_rank << " prijima peska v probeAndHandleMessages()" << endl;
                 #endif
                 receivePesek();
                 break;
             default:
-                cout << " >>>>>>>>>> unknown message in probeAndHandleMessages() <<<<<<<<< " << status.MPI_TAG << endl;
+                cout << "* procesor " << my_rank << " >>>>>>>>>> unknown message in probeAndHandleMessages() <<<<<<<<< " << status.MPI_TAG << endl;
+                throw 'x';
 		}
 		
 		MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &flag, &status);
