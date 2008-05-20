@@ -8,9 +8,11 @@ FAST_INFO_DICT = {
     'tasks_per_node': 2,
     'node': 1,
     'n': 2,
+    'in_num': 0,
+    'in_file': 'in.txt',
 }
 
-FILENAME_TEMPLATE = "parallel_job_%(net)s_%(n)02i.cmd"
+FILENAME_TEMPLATE = "parallel_job_in%(in_num)i_%(net)s_%(n)02i.cmd"
 
 def get_class_for_n(n):
     if n <= 8:
@@ -26,24 +28,28 @@ def main():
         ''
     ]
     
-    for net in ("openib", "tcp"):
-        for (node, tasks_per_node) in ((1, 1), (1, 2), (1, 4), (2, 4), (4, 4), (5, 4), (6, 4)):
-            n = node * tasks_per_node
-            info_dict = {
-                'net': net,
-                'class': get_class_for_n(n),
-                'node': node,
-                'tasks_per_node': tasks_per_node,
-                'n': n,
-            }
+    for in_num in (1, 2, 3):
+        in_file = 'in-t1-n70-k30-0%d.txt' % in_num
+        for net in ("openib", "tcp"):
+            for (node, tasks_per_node) in ((1, 1), (1, 2), (1, 4), (2, 4), (4, 4), (5, 4), (6, 4)):
+                n = node * tasks_per_node
+                info_dict = {
+                    'net': net,
+                    'class': get_class_for_n(n),
+                    'node': node,
+                    'tasks_per_node': tasks_per_node,
+                    'n': n,
+                    'in_num': in_num,
+                    'in_file': in_file,
+                }
             
-            filename = FILENAME_TEMPLATE % info_dict
+                filename = FILENAME_TEMPLATE % info_dict
             
-            file = open(filename, "w")
-            file.write(CONTENT_TEMPLATE % info_dict)
-            file.close()
+                file = open(filename, "w")
+                file.write(CONTENT_TEMPLATE % info_dict)
+                file.close()
             
-            run_all_script.append('llsubmit %s' % filename);
+                run_all_script.append('llsubmit %s' % filename);
     
     file = open('parallel_job_fast.cmd', 'w')
     file.write(CONTENT_TEMPLATE % FAST_INFO_DICT)
@@ -116,7 +122,7 @@ CONTENT_TEMPLATE = '''#!/bin/bash
 # |         Specifies the name of the file to use as standard output (stdout) |
 # |         when your job step runs.                                          |
 #  ---------------------------------------------------------------------------
-# @ job_name = %(net)s_%(n)02i_%(class)s
+# @ job_name = job_i%(in_num)d_%(net)s_%(n)02i_%(class)s
 # @ error    = $(job_name).$(Host).$(Cluster).$(Process).err
 # @ output   = $(job_name).$(Host).$(Cluster).$(Process).out
 
@@ -176,7 +182,7 @@ CONTENT_TEMPLATE = '''#!/bin/bash
 # |                                                                           |
 # | !!! Do not change arguments sequence !!!                                  |
 #  ---------------------------------------------------------------------------
-# @ arguments = --mca mpi_paffinity_alone 1 --mca btl %(net)s,self main
+# @ arguments = --mca mpi_paffinity_alone 1 --mca btl %(net)s,self main %(in_file)s
 
 
 #  ---------------------------------------------------------------------------

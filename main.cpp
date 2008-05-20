@@ -842,6 +842,10 @@ int main(int argc, char **argv)
 		return 1;
 	}
 	*/
+    char *input_file = "in.txt";
+	if (argc > 1) {
+        input_file = argv[1];
+	}
     double t1, t2;
     
 	MPI_Init(&argc, &argv);
@@ -853,7 +857,7 @@ int main(int argc, char **argv)
 	if (my_rank == 0)
 	{
 	    
-		if (loadData("in.txt")) return 1;
+		if (loadData(input_file)) return 1;
 		init();
 		
 		t1=MPI_Wtime (); /* pocatecni cas */
