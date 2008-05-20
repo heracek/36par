@@ -14,4 +14,4 @@ clear:
 	\rm main
 
 run:main
-	mpiexec -n 5 ./main
+	mpiexec -n 10 ./main

@@ -1,1 +1,4 @@
+.DS_Store
 main
+parallel_job_*
+run_all

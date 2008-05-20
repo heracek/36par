@@ -842,7 +842,8 @@ int main(int argc, char **argv)
 		return 1;
 	}
 	*/
-
+    double t1, t2;
+    
 	MPI_Init(&argc, &argv);
 	MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
 	MPI_Comm_size(MPI_COMM_WORLD, &p);
@@ -851,10 +852,17 @@ int main(int argc, char **argv)
 	
 	if (my_rank == 0)
 	{
+	    
 		if (loadData("in.txt")) return 1;
 		init();
+		
+		t1=MPI_Wtime (); /* pocatecni cas */
+		
 		count();
 		writeResult();
+		
+        t2=MPI_Wtime(); /* koncovy cas */
+        printf ("Spotrebovany cas je %f.\n",t2-t1);
 	}
 	else
 	{
@@ -863,7 +871,7 @@ int main(int argc, char **argv)
 		receiveInitResult();
 		count();
 	}
-
+    
 	MPI_Finalize();
 	
 	return 0;
